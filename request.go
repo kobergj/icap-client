@@ -3,6 +3,7 @@ package icapclient
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -71,7 +72,7 @@ func DumpRequest(req *Request) ([]byte, error) {
 
 	httpReqStr := ""
 	if req.HTTPRequest != nil {
-		b, err := httputil.DumpRequestOut(req.HTTPRequest, true)
+		b, err := ioutil.ReadAll(req.HTTPRequest.Body)
 
 		if err != nil {
 			return nil, err
