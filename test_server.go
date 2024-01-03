@@ -79,8 +79,6 @@ func respmodHandler(w icap.ResponseWriter, req *icap.Request) {
 			return
 		}
 
-		// log.Println("The preview data: ", string(req.Preview))
-
 		buf := &bytes.Buffer{}
 
 		if _, err := io.Copy(buf, req.Response.Body); err != nil {
@@ -123,8 +121,6 @@ func reqmodHandler(w icap.ResponseWriter, req *icap.Request) {
 			w.WriteHeader(http.StatusNoContent, nil, false)
 			return
 		}
-
-		// log.Println("The preview data: ", string(req.Preview))
 
 		fileURL := req.Request.RequestURI
 

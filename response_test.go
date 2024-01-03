@@ -10,8 +10,8 @@ import (
 
 func TestResponse(t *testing.T) {
 
-	t.Run("ReadResponse REQMOD", func(t *testing.T) { // FIXME: headers and content request aren't being tested properly
-
+	// FIXME: headers and content request aren't being tested properly
+	t.Run("readResponse REQMOD", func(t *testing.T) {
 		type testSample struct {
 			headers      http.Header
 			status       string
@@ -75,7 +75,7 @@ func TestResponse(t *testing.T) {
 		}
 
 		for _, sample := range sampleTable {
-			resp, err := ReadResponse(bufio.NewReader(strings.NewReader(sample.respStr + sample.httpReqStr)))
+			resp, err := readResponse(bufio.NewReader(strings.NewReader(sample.respStr + sample.httpReqStr)))
 			if err != nil {
 				t.Fatal(err.Error())
 			}
@@ -119,7 +119,7 @@ func TestResponse(t *testing.T) {
 
 	})
 
-	t.Run("ReadResponse RESPMOD", func(t *testing.T) {
+	t.Run("readResponse RESPMOD", func(t *testing.T) {
 		type testSample struct {
 			headers      http.Header
 			status       string
@@ -161,7 +161,7 @@ func TestResponse(t *testing.T) {
 		}
 
 		for _, sample := range sampleTable {
-			resp, err := ReadResponse(bufio.NewReader(strings.NewReader(sample.respStr + sample.httpRespStr)))
+			resp, err := readResponse(bufio.NewReader(strings.NewReader(sample.respStr + sample.httpRespStr)))
 			if err != nil {
 				t.Fatal(err.Error())
 			}
