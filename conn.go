@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// ICAPConn os the one responsible for driving the transport layer operations
+// ICAPConn is the one responsible for driving the transport layer operations. We have to explicitly deal with the connection because the ICAP protocol is aware of keep alive and reconnects.
 type ICAPConn struct {
 	tcp net.Conn
 	mu  sync.Mutex
@@ -22,7 +22,7 @@ func NewICAPConn() (*ICAPConn, error) {
 	return &ICAPConn{}, nil
 }
 
-// Connect connecting to the icap server
+// Connect connects to the icap server
 func (c *ICAPConn) Connect(ctx context.Context, address string, timeout time.Duration) error {
 	dialer := net.Dialer{Timeout: timeout}
 	conn, err := dialer.DialContext(ctx, "tcp", address)
