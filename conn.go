@@ -81,6 +81,7 @@ func (c *ICAPConn) Send(in []byte) (*Response, error) {
 			// something went wrong, exit the loop and send the error
 			if err != nil && err != io.EOF {
 				errChan <- err
+				break
 			}
 
 			// EOF detected, an entire message is received
