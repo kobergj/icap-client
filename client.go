@@ -1,20 +1,12 @@
 package icapclient
 
 import (
+	"bufio"
 	"bytes"
-	"context"
 	"errors"
-	"io"
 	"net/http"
-	"time"
+	"strings"
 )
-
-// Conn represents the connection to the icap server
-type Conn interface {
-	io.Closer
-	Connect(ctx context.Context, address string, timeout time.Duration) error
-	Send(in []byte) (*Response, error)
-}
 
 // Client represents the icap client who makes the icap server calls
 type Client struct {
@@ -55,13 +47,18 @@ func (c *Client) Do(req *Request) (*Response, error) {
 	req.setDefaultRequestHeaders()
 
 	// convert the request to icap message
-	message, err := toICAPMessage(req)
+	message, err := toICAPRequest(req)
 	if err != nil {
 		return nil, err
 	}
 
 	// send the icap message to the server
-	resp, err := c.conn.Send(message)
+	dataRes, err := c.conn.Send(message)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := toClientResponse(bufio.NewReader(strings.NewReader(string(dataRes))))
 	if err != nil {
 		return nil, err
 	}
@@ -74,10 +71,8 @@ func (c *Client) Do(req *Request) (*Response, error) {
 
 	// get the remaining body bytes
 	data := req.remainingPreviewBytes
-	if !bodyAlreadyChunked(string(data)) {
-		ds := string(data)
-		addHexBodyByteNotations(&ds)
-		data = []byte(ds)
+	if !bodyIsChunked(string(data)) {
+		data = []byte(addHexBodyByteNotations(string(data)))
 	}
 
 	// hydrate the icap message with closing doubleCRLF suffix
@@ -86,10 +81,10 @@ func (c *Client) Do(req *Request) (*Response, error) {
 	}
 
 	// send the remaining body bytes to the server
-	resp, err = c.conn.Send(data)
+	dataRes, err = c.conn.Send(data)
 	if err != nil {
 		return nil, err
 	}
 
-	return resp, err
+	return toClientResponse(bufio.NewReader(strings.NewReader(string(dataRes))))
 }

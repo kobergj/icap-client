@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -30,10 +29,8 @@ type Request struct {
 }
 
 // NewRequest returns a new Request given a context, method, url, http request and http response
+// todo: method iota
 func NewRequest(ctx context.Context, method, urlStr string, httpReq *http.Request, httpResp *http.Response) (*Request, error) {
-
-	method = strings.ToUpper(method)
-
 	u, err := url.Parse(urlStr)
 
 	if err != nil {
@@ -41,7 +38,7 @@ func NewRequest(ctx context.Context, method, urlStr string, httpReq *http.Reques
 	}
 
 	req := &Request{
-		Method:       method,
+		Method:       strings.ToUpper(method),
 		URL:          u,
 		Header:       make(map[string][]string),
 		HTTPRequest:  httpReq,
@@ -57,26 +54,28 @@ func NewRequest(ctx context.Context, method, urlStr string, httpReq *http.Reques
 }
 
 // SetPreview sets the preview bytes in the icap header
+// todo: defer close error
 func (r *Request) SetPreview(maxBytes int) error {
-
-	bodyBytes := []byte{}
-
-	previewBytes := 0
+	var bodyBytes []byte
+	var previewBytes int
+	var err error
 
 	// receiving the body bites to determine the preview bytes depending on the request ICAP method
 	if r.Method == MethodREQMOD {
 		if r.HTTPRequest == nil {
 			return nil
 		}
-		if r.HTTPRequest.Body != nil {
-			var err error
-			bodyBytes, err = ioutil.ReadAll(r.HTTPRequest.Body)
 
+		if r.HTTPRequest.Body != nil {
+			b, err := io.ReadAll(r.HTTPRequest.Body)
 			if err != nil {
 				return err
 			}
+			bodyBytes = b
 
-			defer r.HTTPRequest.Body.Close()
+			defer func() {
+				err = errors.Join(err, r.HTTPRequest.Body.Close())
+			}()
 		}
 	}
 
@@ -86,14 +85,15 @@ func (r *Request) SetPreview(maxBytes int) error {
 		}
 
 		if r.HTTPResponse.Body != nil {
-			var err error
-			bodyBytes, err = ioutil.ReadAll(r.HTTPResponse.Body)
-
+			b, err := io.ReadAll(r.HTTPResponse.Body)
 			if err != nil {
 				return err
 			}
+			bodyBytes = b
 
-			defer r.HTTPResponse.Body.Close()
+			defer func() {
+				err = errors.Join(err, r.HTTPResponse.Body.Close())
+			}()
 		}
 	}
 
@@ -126,7 +126,7 @@ func (r *Request) SetPreview(maxBytes int) error {
 	r.PreviewBytes = previewBytes
 	r.previewSet = true
 
-	return nil
+	return err
 }
 
 // setDefaultRequestHeaders is called by the client before sending the request
@@ -160,9 +160,12 @@ func (r *Request) extendHeader(hdr http.Header) error {
 				if err != nil {
 					return err
 				}
-				if err := r.SetPreview(pb); err != nil {
+
+				err = r.SetPreview(pb)
+				if err != nil {
 					return err
 				}
+
 				continue
 			}
 			r.Header.Add(header, value)
