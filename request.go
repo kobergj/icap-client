@@ -30,14 +30,14 @@ type Request struct {
 
 // NewRequest returns a new Request given a context, method, url, http request and http response
 // todo: method iota
-func NewRequest(ctx context.Context, method, urlStr string, httpReq *http.Request, httpResp *http.Response) (*Request, error) {
+func NewRequest(ctx context.Context, method, urlStr string, httpReq *http.Request, httpResp *http.Response) (Request, error) {
 	u, err := url.Parse(urlStr)
 
 	if err != nil {
-		return nil, err
+		return Request{}, err
 	}
 
-	req := &Request{
+	req := Request{
 		Method:       strings.ToUpper(method),
 		URL:          u,
 		Header:       make(map[string][]string),
@@ -47,7 +47,7 @@ func NewRequest(ctx context.Context, method, urlStr string, httpReq *http.Reques
 	}
 
 	if err := req.validate(); err != nil {
-		return nil, err
+		return Request{}, err
 	}
 
 	return req, nil

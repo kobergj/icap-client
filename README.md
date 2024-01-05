@@ -29,9 +29,9 @@ import ic "github.com/egirna/icap-client"
     log.Fatal(err)
   }
 
-  client, err := ic.NewClient(ic.Options{
-    Timeout: 5 * time.Second,
-  })
+  client, err := ic.NewClient(
+    ic.WithICAPConnectionTimeout(5 * time.Second),
+  )
   if err != nil {
     log.Fatal(err)
   }
@@ -52,9 +52,9 @@ import ic "github.com/egirna/icap-client"
     log.Fatal(err)
   }
 
-  client, err := ic.NewClient(ic.Options{
-    Timeout: 5 * time.Second,
-  })
+  client, err := ic.NewClient(
+    ic.WithICAPConnectionTimeout(5 * time.Second),
+  )
   if err != nil {
     log.Fatal(err)
   }

@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // the icap request methods
@@ -62,7 +61,6 @@ const (
 	fullBodyEndIndicatorPreviewMode = "; ieof" + doubleCRLF
 	icap100ContinueMsg              = "ICAP/1.0 100 Continue" + doubleCRLF
 	icap204NoModsMsg                = "ICAP/1.0 204 Unmodified"
-	defaultTimeout                  = 15 * time.Second
 )
 
 // Common ICAP headers
@@ -74,14 +72,8 @@ const (
 // Conn represents the connection to the icap server
 type Conn interface {
 	io.Closer
-	Connect(ctx context.Context, address string, timeout time.Duration) error
+	Connect(ctx context.Context, address string) error
 	Send(in []byte) ([]byte, error)
-}
-
-// Options holds the options for the icap client
-type Options struct {
-	// Timeout is the maximum amount of time a connection will be kept open
-	Timeout time.Duration
 }
 
 // Response represents the icap server response data
@@ -252,7 +244,7 @@ func addHeaderAndBody(headerStr, bodyStr string) string {
 }
 
 // toICAPRequest returns the given request in its ICAP/1.x wire
-func toICAPRequest(req *Request) ([]byte, error) {
+func toICAPRequest(req Request) ([]byte, error) {
 	// Making the ICAP message block
 	reqStr := fmt.Sprintf("%s %s %s%s", req.Method, req.URL.String(), icapVersion, crlf)
 
@@ -354,8 +346,8 @@ func toICAPRequest(req *Request) ([]byte, error) {
 }
 
 // toClientResponse reads an ICAP message and returns a Response
-func toClientResponse(b *bufio.Reader) (*Response, error) {
-	resp := &Response{
+func toClientResponse(b *bufio.Reader) (Response, error) {
+	resp := Response{
 		Header: make(map[string][]string),
 	}
 
@@ -369,7 +361,7 @@ func toClientResponse(b *bufio.Reader) (*Response, error) {
 
 			// must contain 3 words, for example, "ICAP/1.0 200 OK" or "GET /something HTTP/1.1"
 			if len(ss) < 3 {
-				return nil, fmt.Errorf("%w: %s", ErrInvalidTCPMsg, currentMsg)
+				return Response{}, fmt.Errorf("%w: %s", ErrInvalidTCPMsg, currentMsg)
 			}
 
 			// preparing the scheme below
@@ -378,7 +370,7 @@ func toClientResponse(b *bufio.Reader) (*Response, error) {
 
 				resp.StatusCode, resp.Status, err = getStatusWithCode(ss[1], strings.Join(ss[2:], " "))
 				if err != nil {
-					return nil, err
+					return Response{}, err
 				}
 
 				continue
@@ -421,7 +413,7 @@ func toClientResponse(b *bufio.Reader) (*Response, error) {
 			if currentMsg == crlf || bufferEmpty {
 				request, err := http.ReadRequest(bufio.NewReader(strings.NewReader(httpMsg)))
 				if err != nil {
-					return nil, err
+					return Response{}, err
 				}
 				resp.ContentRequest = request
 
@@ -436,15 +428,13 @@ func toClientResponse(b *bufio.Reader) (*Response, error) {
 			if currentMsg == crlf || bufferEmpty {
 				response, err := http.ReadResponse(bufio.NewReader(strings.NewReader(httpMsg)), resp.ContentRequest)
 				if err != nil {
-					return nil, err
+					return Response{}, err
 				}
 				resp.ContentResponse = response
 
 				continue
 			}
-
 		}
-
 	}
 
 	return resp, nil

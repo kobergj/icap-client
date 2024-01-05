@@ -77,7 +77,7 @@ func TestClient_Do(t *testing.T) {
 				return
 			}
 
-			client, _ := NewClient(Options{})
+			client, _ := NewClient()
 			resp, err := client.Do(req)
 			if err != nil {
 				t.Log(err.Error())
@@ -133,7 +133,7 @@ func TestClient_Do(t *testing.T) {
 				return
 			}
 
-			client, _ := NewClient(Options{})
+			client, _ := NewClient()
 			resp, err := client.Do(req)
 			if err != nil {
 				t.Log(err.Error())
@@ -236,7 +236,7 @@ func TestClient_Do(t *testing.T) {
 				return
 			}
 
-			client, _ := NewClient(Options{})
+			client, _ := NewClient()
 			optResp, err := client.Do(optReq)
 			if err != nil {
 				t.Log(err.Error())
@@ -356,7 +356,7 @@ func TestClient_Do(t *testing.T) {
 				return
 			}
 
-			client, _ := NewClient(Options{})
+			client, _ := NewClient()
 			optResp, err := client.Do(optReq)
 			if err != nil {
 				t.Log(err.Error())
@@ -461,7 +461,7 @@ func TestClient_Do(t *testing.T) {
 				return
 			}
 
-			client, _ := NewClient(Options{})
+			client, _ := NewClient()
 			resp, err := client.Do(req)
 			if err != nil {
 				t.Log(err.Error())
