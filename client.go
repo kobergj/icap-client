@@ -11,34 +11,33 @@ import (
 // Client represents the icap client who makes the icap server calls
 type Client struct {
 	conn Conn
-	opts Options
 }
 
 // NewClient creates a new icap client
-func NewClient(opts Options) (*Client, error) {
-	conn, err := NewICAPConn()
+func NewClient(options ...ConfigOption) (Client, error) {
+	config := DefaultConfig()
+	for _, option := range options {
+		option(&config)
+	}
+
+	conn, err := NewICAPConn(config.ICAPConn)
 	if err != nil {
-		return nil, err
+		return Client{}, err
 	}
 
-	if opts.Timeout == 0 {
-		opts.Timeout = defaultTimeout
-	}
-
-	return &Client{
+	return Client{
 		conn: conn,
-		opts: opts,
 	}, nil
 }
 
 // Do is the main function of the client that makes the ICAP request
-func (c *Client) Do(req *Request) (*Response, error) {
+func (c *Client) Do(req Request) (Response, error) {
 	var err error
 
 	// establish connection to the icap server
-	err = c.conn.Connect(req.ctx, req.URL.Host, 0)
+	err = c.conn.Connect(req.ctx, req.URL.Host)
 	if err != nil {
-		return nil, err
+		return Response{}, err
 	}
 	defer func() {
 		err = errors.Join(err, c.conn.Close())
@@ -49,18 +48,18 @@ func (c *Client) Do(req *Request) (*Response, error) {
 	// convert the request to icap message
 	message, err := toICAPRequest(req)
 	if err != nil {
-		return nil, err
+		return Response{}, err
 	}
 
 	// send the icap message to the server
 	dataRes, err := c.conn.Send(message)
 	if err != nil {
-		return nil, err
+		return Response{}, err
 	}
 
 	resp, err := toClientResponse(bufio.NewReader(strings.NewReader(string(dataRes))))
 	if err != nil {
-		return nil, err
+		return Response{}, err
 	}
 
 	// check if the message is fully done scanning or if it needs to be sent another chunk
@@ -83,7 +82,7 @@ func (c *Client) Do(req *Request) (*Response, error) {
 	// send the remaining body bytes to the server
 	dataRes, err = c.conn.Send(data)
 	if err != nil {
-		return nil, err
+		return Response{}, err
 	}
 
 	return toClientResponse(bufio.NewReader(strings.NewReader(string(dataRes))))

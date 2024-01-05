@@ -10,20 +10,29 @@ import (
 	"time"
 )
 
+// ICAPConnConfig is the configuration for the icap connection
+type ICAPConnConfig struct {
+	// Timeout is the maximum amount of time a connection will be kept open
+	Timeout time.Duration
+}
+
 // ICAPConn is the one responsible for driving the transport layer operations. We have to explicitly deal with the connection because the ICAP protocol is aware of keep alive and reconnects.
 type ICAPConn struct {
-	tcp net.Conn
-	mu  sync.Mutex
+	tcp     net.Conn
+	mu      sync.Mutex
+	timeout time.Duration
 }
 
 // NewICAPConn creates a new connection to the icap server
-func NewICAPConn() (*ICAPConn, error) {
-	return &ICAPConn{}, nil
+func NewICAPConn(conf ICAPConnConfig) (*ICAPConn, error) {
+	return &ICAPConn{
+		timeout: conf.Timeout,
+	}, nil
 }
 
 // Connect connects to the icap server
-func (c *ICAPConn) Connect(ctx context.Context, address string, timeout time.Duration) error {
-	dialer := net.Dialer{Timeout: timeout}
+func (c *ICAPConn) Connect(ctx context.Context, address string) error {
+	dialer := net.Dialer{Timeout: c.timeout}
 	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return err

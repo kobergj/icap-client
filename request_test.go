@@ -242,7 +242,7 @@ func TestRequest(t *testing.T) {
 		for _, sample := range sampleTable {
 			bodyData := bytes.NewBufferString(sample.bodyStr)
 			httpReq, _ := http.NewRequest(http.MethodPost, "http://someurl.com", bodyData)
-			var req *Request
+			var req Request
 			if sample.reqMethod == MethodREQMOD {
 				req, _ = NewRequest(context.Background(), sample.reqMethod, "icap://localhost:1344/something", httpReq, nil)
 			}
