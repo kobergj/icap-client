@@ -3,7 +3,7 @@ package icapclient
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -45,7 +45,7 @@ func TestClient_Do(t *testing.T) {
 						"Content-Length": []string{"19"},
 					},
 					ContentLength: 19,
-					Body:          ioutil.NopCloser(strings.NewReader("This is a GOOD FILE")),
+					Body:          io.NopCloser(strings.NewReader("This is a GOOD FILE")),
 				},
 				wantedStatusCode: http.StatusNoContent,
 				wantedStatus:     "No Modifications",
@@ -62,7 +62,7 @@ func TestClient_Do(t *testing.T) {
 						"Content-Length": []string{"18"},
 					},
 					ContentLength: 18,
-					Body:          ioutil.NopCloser(strings.NewReader("This is a BAD FILE")),
+					Body:          io.NopCloser(strings.NewReader("This is a BAD FILE")),
 				},
 				wantedStatusCode: http.StatusOK,
 				wantedStatus:     "OK",
@@ -184,7 +184,7 @@ func TestClient_Do(t *testing.T) {
 						"Content-Length": []string{"41"},
 					},
 					ContentLength: 41,
-					Body:          ioutil.NopCloser(strings.NewReader("Hello World!This is a GOOD FILE! bye bye!")),
+					Body:          io.NopCloser(strings.NewReader("Hello World!This is a GOOD FILE! bye bye!")),
 				},
 				wantedStatusCode:       http.StatusNoContent,
 				wantedStatus:           "No Modifications",
@@ -210,7 +210,7 @@ func TestClient_Do(t *testing.T) {
 						"Content-Length": []string{"18"},
 					},
 					ContentLength: 18,
-					Body:          ioutil.NopCloser(strings.NewReader("This is a BAD FILE")),
+					Body:          io.NopCloser(strings.NewReader("This is a BAD FILE")),
 				},
 				wantedStatusCode:       http.StatusOK,
 				wantedStatus:           "OK",

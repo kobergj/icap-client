@@ -1,8 +1,12 @@
 package icapclient
 
 import (
+	"bufio"
+	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/http/httputil"
 	"regexp"
 	"strconv"
@@ -67,15 +71,31 @@ const (
 	encapsulatedHeader = "Encapsulated"
 )
 
+// Conn represents the connection to the icap server
+type Conn interface {
+	io.Closer
+	Connect(ctx context.Context, address string, timeout time.Duration) error
+	Send(in []byte) ([]byte, error)
+}
+
 // Options holds the options for the icap client
 type Options struct {
 	// Timeout is the maximum amount of time a connection will be kept open
 	Timeout time.Duration
 }
 
+// Response represents the icap server response data
+type Response struct {
+	StatusCode      int
+	Status          string
+	PreviewBytes    int
+	Header          http.Header
+	ContentRequest  *http.Request
+	ContentResponse *http.Response
+}
+
 // getStatusWithCode prepares the status code and status text from two given strings
 func getStatusWithCode(str1, str2 string) (int, string, error) {
-
 	statusCode, err := strconv.Atoi(str1)
 
 	if err != nil {
@@ -87,18 +107,16 @@ func getStatusWithCode(str1, str2 string) (int, string, error) {
 	return statusCode, status, nil
 }
 
-// getHeaderVal parses the header and its value from a tcp message string
-func getHeaderVal(str string) (string, string) {
+// getHeaderValue parses the header and its value from a tcp message string
+func getHeaderValue(str string) (string, string) {
+	headerValues := strings.SplitN(str, ":", 2)
+	header := headerValues[0]
 
-	headerVals := strings.SplitN(str, ":", 2)
-	header := headerVals[0]
-	val := ""
-
-	if len(headerVals) >= 2 {
-		val = strings.TrimSpace(headerVals[1])
+	if len(headerValues) >= 2 {
+		return header, strings.TrimSpace(headerValues[1])
 	}
 
-	return header, val
+	return header, ""
 
 }
 
@@ -108,20 +126,21 @@ func isRequestLine(str string) bool {
 }
 
 // setEncapsulatedHeaderValue generates the Encapsulated values and assigns to the ICAP request string
-func setEncapsulatedHeaderValue(icapReqStr *string, httpReqStr, httpRespStr string) {
-	encpVal := " "
+func setEncapsulatedHeaderValue(icapReqStr string, httpReqStr, httpRespStr string) string {
+	encVal := " "
 
-	if strings.HasPrefix(*icapReqStr, MethodOPTIONS) {
-		if httpReqStr == "" && httpRespStr == "" {
-			// the most common case for OPTIONS method, no Encapsulated body
-			encpVal += "null-body=0"
-		} else {
+	if strings.HasPrefix(icapReqStr, MethodOPTIONS) {
+		switch {
+		// the most common case for OPTIONS method, no Encapsulated body
+		case httpReqStr == "" && httpRespStr == "":
+			encVal += "null-body=0"
 			// if there is an Encapsulated body
-			encpVal += "opt-body=0"
+		default:
+			encVal += "opt-body=0"
 		}
 	}
 
-	if strings.HasPrefix(*icapReqStr, MethodREQMOD) || strings.HasPrefix(*icapReqStr, MethodRESPMOD) {
+	if strings.HasPrefix(icapReqStr, MethodREQMOD) || strings.HasPrefix(icapReqStr, MethodRESPMOD) {
 		// looking for the match of the string \r\n\r\n,
 		// as that is the expression that separates each block, i.e., headers and bodies
 		re := regexp.MustCompile(doubleCRLF)
@@ -133,50 +152,54 @@ func setEncapsulatedHeaderValue(icapReqStr *string, httpReqStr, httpRespStr stri
 		reqEndsAt := 0
 
 		if reqIndices != nil {
-			encpVal += "req-hdr=0"
+			encVal += "req-hdr=0"
 			reqEndsAt = reqIndices[0][1]
 
+			switch {
 			// indicating there is a body present for the request block, as length would have been 1 for a single match of \r\n\r\n
-			if len(reqIndices) > 1 {
-				encpVal += fmt.Sprintf(", req-body=%d", reqIndices[0][1]) // assigning the starting point of the body
+			case len(reqIndices) > 1:
+				encVal += fmt.Sprintf(", req-body=%d", reqIndices[0][1]) // assigning the starting point of the body
 				reqEndsAt = reqIndices[1][1]
-			} else if httpRespStr == "" {
-				encpVal += fmt.Sprintf(", null-body=%d", reqIndices[0][1])
+			case httpRespStr == "":
+				encVal += fmt.Sprintf(", null-body=%d", reqIndices[0][1])
 			}
 
 			if httpRespStr != "" {
-				encpVal += ", "
+				encVal += ", "
 			}
 		}
 
 		respIndices := re.FindAllStringIndex(httpRespStr, -1)
 
 		if respIndices != nil {
-			encpVal += fmt.Sprintf("res-hdr=%d", reqEndsAt)
-			if len(respIndices) > 1 {
-				encpVal += fmt.Sprintf(", res-body=%d", reqEndsAt+respIndices[0][1])
-			} else {
-				encpVal += fmt.Sprintf(", null-body=%d", reqEndsAt+respIndices[0][1])
+			encVal += fmt.Sprintf("res-hdr=%d", reqEndsAt)
+
+			switch {
+			case len(respIndices) > 1:
+				encVal += fmt.Sprintf(", res-body=%d", reqEndsAt+respIndices[0][1])
+			default:
+				encVal += fmt.Sprintf(", null-body=%d", reqEndsAt+respIndices[0][1])
 			}
 		}
 
 	}
+
 	// formatting the ICAP request Encapsulated header with the value
-	*icapReqStr = fmt.Sprintf(*icapReqStr, encpVal)
+	return fmt.Sprintf(icapReqStr, encVal)
 }
 
 // replaceRequestURIWithActualURL replaces just the escaped portion of the url with the entire URL in the dumped request message
-func replaceRequestURIWithActualURL(str *string, uri, url string) {
+func replaceRequestURIWithActualURL(str string, uri, url string) string {
 	if uri == "" {
 		uri = "/"
 	}
-	*str = strings.Replace(*str, uri, url, 1)
+
+	return strings.Replace(str, uri, url, 1)
 }
 
 // addFullBodyInPreviewIndicator adds 0; ieof\r\n\r\n which indicates the entire body fitted in the preview
-func addFullBodyInPreviewIndicator(str *string) {
-	*str = strings.TrimSuffix(*str, doubleCRLF)
-	*str += fullBodyEndIndicatorPreviewMode
+func addFullBodyInPreviewIndicator(str string) string {
+	return strings.TrimSuffix(str, doubleCRLF) + fullBodyEndIndicatorPreviewMode
 }
 
 // splitBodyAndHeader separates header and body from a http message
@@ -193,59 +216,49 @@ func splitBodyAndHeader(str string) (string, string, bool) {
 	return headerStr, bodyStr, true
 }
 
-// bodyAlreadyChunked determines if the http body is already chunked from the origin server or not
-func bodyAlreadyChunked(str string) bool {
+// bodyIsChunked determines if the http body is already chunked from the origin server or not
+func bodyIsChunked(str string) bool {
 	_, bodyStr, ok := splitBodyAndHeader(str)
 
 	if !ok {
 		return false
 	}
 
-	r := regexp.MustCompile("\\r\\n0(\\r\\n)+$")
-	return r.MatchString(bodyStr)
-
+	return regexp.MustCompile(`\r\n0(\r\n)+$`).MatchString(bodyStr)
 }
 
 // parsePreviewBodyBytes parses the preview portion of the body and only keeps that in the message
-func parsePreviewBodyBytes(str *string, pb int) {
-
-	headerStr, bodyStr, ok := splitBodyAndHeader(*str)
-
+func parsePreviewBodyBytes(str string, pb int) string {
+	headerStr, bodyStr, ok := splitBodyAndHeader(str)
 	if !ok {
-		return
+		return str
 	}
 
-	bodyStr = bodyStr[:pb]
-
-	*str = headerStr + doubleCRLF + bodyStr
+	return headerStr + doubleCRLF + bodyStr[:pb]
 }
 
-// addHexBodyByteNotations adds the hexadecimal byte notations in the messages,
+// addHexBodyByteNotations adds the hexadecimal byte notations to the string,
 // for example, Hello World, becomes
 // b
 // Hello World
 // 0
-func addHexBodyByteNotations(bodyStr *string) {
-
-	bodyBytes := []byte(*bodyStr)
-
-	*bodyStr = fmt.Sprintf("%x%s%s%s", len(bodyBytes), crlf, *bodyStr, bodyEndIndicator)
+func addHexBodyByteNotations(str string) string {
+	return fmt.Sprintf("%x%s%s%s", len([]byte(str)), crlf, str, bodyEndIndicator)
 }
 
-// mergeHeaderAndBody merges the header and body of the http message
-func mergeHeaderAndBody(src *string, headerStr, bodyStr string) {
-	*src = headerStr + doubleCRLF + bodyStr
+// addHeaderAndBody merges the header and body of the http message
+func addHeaderAndBody(headerStr, bodyStr string) string {
+	return headerStr + doubleCRLF + bodyStr
 }
 
-// toICAPMessage returns the given request in its ICAP/1.x wire
-func toICAPMessage(req *Request) ([]byte, error) {
-
+// toICAPRequest returns the given request in its ICAP/1.x wire
+func toICAPRequest(req *Request) ([]byte, error) {
 	// Making the ICAP message block
 	reqStr := fmt.Sprintf("%s %s %s%s", req.Method, req.URL.String(), icapVersion, crlf)
 
-	for headerName, vals := range req.Header {
-		for _, val := range vals {
-			reqStr += fmt.Sprintf("%s: %s%s", headerName, val, crlf)
+	for headerName, values := range req.Header {
+		for _, value := range values {
+			reqStr += fmt.Sprintf("%s: %s%s", headerName, value, crlf)
 		}
 	}
 
@@ -263,18 +276,18 @@ func toICAPMessage(req *Request) ([]byte, error) {
 		}
 
 		httpReqStr += string(b)
-		replaceRequestURIWithActualURL(&httpReqStr, req.HTTPRequest.URL.EscapedPath(), req.HTTPRequest.URL.String())
+		httpReqStr = replaceRequestURIWithActualURL(httpReqStr, req.HTTPRequest.URL.EscapedPath(), req.HTTPRequest.URL.String())
 
 		if req.Method == MethodREQMOD {
 			if req.previewSet {
-				parsePreviewBodyBytes(&httpReqStr, req.PreviewBytes)
+				httpReqStr = parsePreviewBodyBytes(httpReqStr, req.PreviewBytes)
 			}
 
-			if !bodyAlreadyChunked(httpReqStr) {
+			if !bodyIsChunked(httpReqStr) {
 				headerStr, bodyStr, ok := splitBodyAndHeader(httpReqStr)
 				if ok {
-					addHexBodyByteNotations(&bodyStr)
-					mergeHeaderAndBody(&httpReqStr, headerStr, bodyStr)
+					bodyStr = addHexBodyByteNotations(bodyStr)
+					httpReqStr = addHeaderAndBody(headerStr, bodyStr)
 				}
 			}
 
@@ -302,14 +315,14 @@ func toICAPMessage(req *Request) ([]byte, error) {
 		httpRespStr += string(b)
 
 		if req.previewSet {
-			parsePreviewBodyBytes(&httpRespStr, req.PreviewBytes)
+			httpRespStr = parsePreviewBodyBytes(httpRespStr, req.PreviewBytes)
 		}
 
-		if !bodyAlreadyChunked(httpRespStr) {
+		if !bodyIsChunked(httpRespStr) {
 			headerStr, bodyStr, ok := splitBodyAndHeader(httpRespStr)
 			if ok {
-				addHexBodyByteNotations(&bodyStr)
-				mergeHeaderAndBody(&httpRespStr, headerStr, bodyStr)
+				bodyStr = addHexBodyByteNotations(bodyStr)
+				httpRespStr = addHeaderAndBody(headerStr, bodyStr)
 			}
 		}
 
@@ -319,23 +332,120 @@ func toICAPMessage(req *Request) ([]byte, error) {
 
 	}
 
-	if encpVal := req.Header.Get(encapsulatedHeader); encpVal != "" {
-		reqStr = fmt.Sprintf(reqStr, encpVal)
+	if encVal := req.Header.Get(encapsulatedHeader); encVal != "" {
+		reqStr = fmt.Sprintf(reqStr, encVal)
 	} else {
 		//populating the Encapsulated header of the ICAP message portion
-		setEncapsulatedHeaderValue(&reqStr, httpReqStr, httpRespStr)
+		reqStr = setEncapsulatedHeaderValue(reqStr, httpReqStr, httpRespStr)
 	}
 
 	// determining if the http message needs the full body fitted in the preview portion indicator or not
 	if httpRespStr != "" && req.previewSet && req.bodyFittedInPreview {
-		addFullBodyInPreviewIndicator(&httpRespStr)
+		httpRespStr = addFullBodyInPreviewIndicator(httpRespStr)
 	}
 
 	if req.Method == MethodREQMOD && req.previewSet && req.bodyFittedInPreview {
-		addFullBodyInPreviewIndicator(&httpReqStr)
+		httpReqStr = addFullBodyInPreviewIndicator(httpReqStr)
 	}
 
 	data := []byte(reqStr + httpReqStr + httpRespStr)
 
 	return data, nil
+}
+
+// toClientResponse reads an ICAP message and returns a Response
+func toClientResponse(b *bufio.Reader) (*Response, error) {
+	resp := &Response{
+		Header: make(map[string][]string),
+	}
+
+	scheme := ""
+	httpMsg := ""
+	for currentMsg, err := b.ReadString('\n'); err == nil || currentMsg != ""; currentMsg, err = b.ReadString('\n') { // keep reading the buffer message which is the http response message
+
+		// if the current message line if the first line of the message portion(request line)
+		if isRequestLine(currentMsg) {
+			ss := strings.Split(currentMsg, " ")
+
+			// must contain 3 words, for example, "ICAP/1.0 200 OK" or "GET /something HTTP/1.1"
+			if len(ss) < 3 {
+				return nil, fmt.Errorf("%w: %s", ErrInvalidTCPMsg, currentMsg)
+			}
+
+			// preparing the scheme below
+			if ss[0] == icapVersion {
+				scheme = schemeICAP
+
+				resp.StatusCode, resp.Status, err = getStatusWithCode(ss[1], strings.Join(ss[2:], " "))
+				if err != nil {
+					return nil, err
+				}
+
+				continue
+			}
+
+			if ss[0] == httpVersion {
+				scheme = schemeHTTPResp
+				httpMsg = ""
+			}
+
+			// http request message scheme version should always be at the end,
+			// for example, GET /something HTTP/1.1
+			if strings.TrimSpace(ss[2]) == httpVersion {
+				scheme = schemeHTTPReq
+				httpMsg = ""
+			}
+		}
+
+		// preparing the header for ICAP & contents for the HTTP messages below
+		if scheme == schemeICAP {
+			// ignore the CRLF and the LF, shouldn't be counted
+			if currentMsg == lf || currentMsg == crlf {
+				continue
+			}
+
+			header, val := getHeaderValue(currentMsg)
+			if header == previewHeader {
+				pb, _ := strconv.Atoi(val)
+				resp.PreviewBytes = pb
+			}
+
+			resp.Header.Add(header, val)
+		}
+
+		if scheme == schemeHTTPReq {
+			httpMsg += strings.TrimSpace(currentMsg) + crlf
+			bufferEmpty := b.Buffered() == 0
+
+			// a crlf indicates the end of the HTTP message and the buffer check is just in case the buffer ended with one last message instead of a crlf
+			if currentMsg == crlf || bufferEmpty {
+				request, err := http.ReadRequest(bufio.NewReader(strings.NewReader(httpMsg)))
+				if err != nil {
+					return nil, err
+				}
+				resp.ContentRequest = request
+
+				continue
+			}
+		}
+
+		if scheme == schemeHTTPResp {
+			httpMsg += strings.TrimSpace(currentMsg) + crlf
+			bufferEmpty := b.Buffered() == 0
+
+			if currentMsg == crlf || bufferEmpty {
+				response, err := http.ReadResponse(bufio.NewReader(strings.NewReader(httpMsg)), resp.ContentRequest)
+				if err != nil {
+					return nil, err
+				}
+				resp.ContentResponse = response
+
+				continue
+			}
+
+		}
+
+	}
+
+	return resp, nil
 }

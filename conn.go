@@ -1,11 +1,10 @@
 package icapclient
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"io"
 	"net"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -50,7 +49,7 @@ func (c *ICAPConn) Connect(ctx context.Context, address string, timeout time.Dur
 }
 
 // Send sends a request to the icap server
-func (c *ICAPConn) Send(in []byte) (*Response, error) {
+func (c *ICAPConn) Send(in []byte) ([]byte, error) {
 	if !c.ok() {
 		return nil, syscall.EINVAL
 	}
@@ -59,7 +58,7 @@ func (c *ICAPConn) Send(in []byte) (*Response, error) {
 	defer c.mu.Unlock()
 
 	errChan := make(chan error)
-	resChan := make(chan *Response)
+	resChan := make(chan []byte)
 
 	go func() {
 		// send the message to the server
@@ -78,10 +77,12 @@ func (c *ICAPConn) Send(in []byte) (*Response, error) {
 			// read the response from the server
 			n, err := c.tcp.Read(tmp)
 
-			// something went wrong, exit the loop and send the error
+			// something went wrong while reading from the server,
+			// send the error and exit the routine to prevent
+			// sending the response to resChan
 			if err != nil && err != io.EOF {
 				errChan <- err
-				break
+				return
 			}
 
 			// EOF detected, an entire message is received
@@ -93,27 +94,22 @@ func (c *ICAPConn) Send(in []byte) (*Response, error) {
 
 			// explicitly breaking because the Read blocks for 100 continue message
 			// fixMe: still unclear why this is happening, find out and fix it
-			if string(data) == icap100ContinueMsg {
+			if bytes.Equal(data, []byte(icap100ContinueMsg)) {
 				break
 			}
 
 			// EOF detected, 0 Double crlf indicates the end of the message
-			if strings.HasSuffix(string(data), "0\r\n\r\n") {
+			if bytes.HasSuffix(data, []byte("0\r\n\r\n")) {
 				break
 			}
 
 			// EOF detected, 204 no modifications and Double crlf indicate the end of the message
-			if strings.Contains(string(data), icap204NoModsMsg) {
+			if bytes.Contains(data, []byte(icap204NoModsMsg)) {
 				break
 			}
 		}
 
-		resp, err := readResponse(bufio.NewReader(strings.NewReader(string(data))))
-		if err != nil {
-			errChan <- err
-		}
-
-		resChan <- resp
+		resChan <- data
 	}()
 
 	select {
