@@ -11,6 +11,13 @@ import (
 	"testing"
 )
 
+// export private members for testing
+const (
+	ICAP100ContinueMsg = icap100ContinueMsg
+	DoubleCRLF         = doubleCRLF
+	ICAP204NoModsMsg   = icap204NoModsMsg
+)
+
 func TestSetEncapsulatedHeaderValue(t *testing.T) {
 	type testSample struct {
 		icapReqStr  string

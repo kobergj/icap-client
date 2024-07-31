@@ -21,8 +21,7 @@ func TestClient_Do(t *testing.T) {
 	t.Run("RESPMOD", func(t *testing.T) {
 		httpReq, err := http.NewRequest(http.MethodGet, "http://someurl.com", nil)
 		if err != nil {
-			t.Log(err.Error())
-			t.Fail()
+			t.Error(err)
 			return
 		}
 
@@ -72,27 +71,23 @@ func TestClient_Do(t *testing.T) {
 		for _, sample := range sampleTable {
 			req, err := NewRequest(context.Background(), MethodRESPMOD, fmt.Sprintf("icap://localhost:%d/respmod", port), httpReq, sample.httpResp)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			client, _ := NewClient()
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if resp.StatusCode != sample.wantedStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
 			}
 
 			if resp.Status != sample.wantedStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
 			}
 		}
 
@@ -121,34 +116,29 @@ func TestClient_Do(t *testing.T) {
 		for _, sample := range sampleTable {
 			httpReq, err := http.NewRequest(http.MethodGet, sample.urlStr, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			req, err := NewRequest(context.Background(), MethodREQMOD, fmt.Sprintf("icap://localhost:%d/reqmod", port), httpReq, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			client, _ := NewClient()
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if resp.StatusCode != sample.wantedStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
 			}
 
 			if resp.Status != sample.wantedStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
 			}
 		}
 	})
@@ -156,8 +146,7 @@ func TestClient_Do(t *testing.T) {
 	t.Run("RESPMOD with OPTIONS", func(t *testing.T) {
 		httpReq, err := http.NewRequest(http.MethodGet, "http://someurl.com", nil)
 		if err != nil {
-			t.Log(err.Error())
-			t.Fail()
+			t.Error(err)
 			return
 		}
 
@@ -231,76 +220,63 @@ func TestClient_Do(t *testing.T) {
 
 			optReq, err := NewRequest(context.Background(), MethodOPTIONS, urlStr, nil, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			client, _ := NewClient()
 			optResp, err := client.Do(optReq)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if optResp.Status != sample.wantedOptionStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedOptionStatus, optResp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedOptionStatus, optResp.Status)
 			}
 
 			if optResp.StatusCode != sample.wantedOptionStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedOptionStatusCode, optResp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedOptionStatusCode, optResp.StatusCode)
 			}
 
 			if optResp.PreviewBytes != sample.wantedPreviewBytes {
-				t.Logf("Wanted preview bytes:%d , got:%d", sample.wantedPreviewBytes, optResp.PreviewBytes)
-				t.Fail()
+				t.Errorf("Wanted preview bytes:%d , got:%d", sample.wantedPreviewBytes, optResp.PreviewBytes)
 			}
 
 			for k, v := range sample.wantedOptionHeader {
 				if val, exists := optResp.Header[k]; exists {
 					if !reflect.DeepEqual(val, v) {
-						t.Logf("Wanted value for header:%s to be:%v, got:%v", k, v, val)
-						t.Fail()
+						t.Errorf("Wanted value for header:%s to be:%v, got:%v", k, v, val)
 					}
 					continue
 				}
 
-				t.Logf("Expected header:%s but not found", k)
-				t.Fail()
-
+				t.Errorf("Expected header:%s but not found", k)
 			}
 
 			req, err := NewRequest(context.Background(), MethodRESPMOD, urlStr, httpReq, sample.httpResp)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if err := req.extendHeader(optResp.Header); err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if resp.StatusCode != sample.wantedStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
 			}
 
 			if resp.Status != sample.wantedStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
 			}
 
 		}
@@ -351,75 +327,63 @@ func TestClient_Do(t *testing.T) {
 
 			optReq, err := NewRequest(context.Background(), MethodOPTIONS, urlStr, nil, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			client, _ := NewClient()
 			optResp, err := client.Do(optReq)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if optResp.Status != sample.wantedOptionStatus {
-				t.Logf("Wanted status:%s , got:%s", sample.wantedOptionStatus, optResp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s , got:%s", sample.wantedOptionStatus, optResp.Status)
 			}
 			if optResp.StatusCode != sample.wantedOptionStatusCode {
-				t.Logf("Wanted status code:%d , got:%d", sample.wantedOptionStatusCode, optResp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d , got:%d", sample.wantedOptionStatusCode, optResp.StatusCode)
 			}
 			for k, v := range sample.wantedOptionHeader {
 				if val, exists := optResp.Header[k]; exists {
 					if !reflect.DeepEqual(val, v) {
-						t.Logf("Wanted header:%s to have value:%v, got:%v", k, v, val)
-						t.Fail()
+						t.Errorf("Wanted header:%s to have value:%v, got:%v", k, v, val)
 					}
 					continue
 				}
 
-				t.Logf("Expected header:%s but not found", k)
-				t.Fail()
+				t.Errorf("Expected header:%s but not found", k)
 			}
 
 			httpReq, err := http.NewRequest(http.MethodGet, sample.urlStr, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			req, err := NewRequest(context.Background(), MethodREQMOD, urlStr, httpReq, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if err := req.extendHeader(optResp.Header); err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if resp.StatusCode != sample.wantedStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
 			}
 
 			if resp.Status != sample.wantedStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
 			}
 
 		}
@@ -449,34 +413,29 @@ func TestClient_Do(t *testing.T) {
 		for _, sample := range sampleTable {
 			httpReq, err := http.NewRequest(http.MethodGet, sample.urlStr, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			req, err := NewRequest(context.Background(), MethodREQMOD, fmt.Sprintf("icap://localhost:%d/reqmod", port), httpReq, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			client, _ := NewClient()
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if resp.StatusCode != sample.wantedStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
 			}
 
 			if resp.Status != sample.wantedStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
 			}
 
 		}
