@@ -2,8 +2,9 @@ package icapclient
 
 import (
 	"bytes"
+	"context"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"reflect"
@@ -13,7 +14,6 @@ import (
 )
 
 func TestRequest(t *testing.T) {
-
 	t.Run("Request Factory", func(t *testing.T) {
 
 		type testSample struct {
@@ -22,7 +22,6 @@ func TestRequest(t *testing.T) {
 			httpReq   *http.Request
 			httpResp  *http.Response
 			err       error
-			errStr    string
 		}
 
 		sampleTable := []testSample{
@@ -32,7 +31,6 @@ func TestRequest(t *testing.T) {
 				httpReq:   nil,
 				httpResp:  nil,
 				err:       nil,
-				errStr:    "",
 			},
 			{
 				urlStr:    "icap://localhost:1344/something",
@@ -40,7 +38,6 @@ func TestRequest(t *testing.T) {
 				httpReq:   nil,
 				httpResp:  &http.Response{},
 				err:       nil,
-				errStr:    "",
 			},
 			{
 				urlStr:    "icap://localhost:1344/something",
@@ -48,61 +45,53 @@ func TestRequest(t *testing.T) {
 				httpReq:   &http.Request{},
 				httpResp:  nil,
 				err:       nil,
-				errStr:    "",
 			},
 			{
 				urlStr:    "icap://localhost:1344/something",
 				reqMethod: "invalid",
 				httpReq:   nil,
 				httpResp:  nil,
-				err:       errors.New(ErrMethodNotRegistered),
-				errStr:    ErrMethodNotRegistered,
+				err:       ErrMethodNotAllowed,
 			},
 			{
 				urlStr:    "http://localhost:1344/something",
 				reqMethod: MethodOPTIONS,
 				httpReq:   nil,
 				httpResp:  nil,
-				err:       errors.New(ErrInvalidScheme),
-				errStr:    ErrInvalidScheme,
+				err:       ErrInvalidScheme,
 			},
 			{
 				urlStr:    "icap://",
 				reqMethod: MethodOPTIONS,
 				httpReq:   nil,
 				httpResp:  nil,
-				err:       errors.New(ErrInvalidHost),
-				errStr:    ErrInvalidHost,
+				err:       ErrInvalidHost,
 			},
 			{
 				urlStr:    "icap://localhost:1344/something",
 				reqMethod: MethodREQMOD,
 				httpReq:   nil,
 				httpResp:  nil,
-				err:       errors.New(ErrREQMODWithNoReq),
-				errStr:    ErrREQMODWithNoReq,
+				err:       ErrREQMODWithoutReq,
 			},
 			{
 				urlStr:    "icap://localhost:1344/something",
 				reqMethod: MethodREQMOD,
 				httpReq:   &http.Request{},
 				httpResp:  &http.Response{},
-				err:       errors.New(ErrREQMODWithResp),
-				errStr:    ErrREQMODWithResp,
+				err:       ErrREQMODWithResp,
 			},
 			{
 				urlStr:    "icap://localhost:1344/something",
 				reqMethod: MethodRESPMOD,
 				httpReq:   &http.Request{},
 				httpResp:  nil,
-				err:       errors.New(ErrRESPMODWithNoResp),
-				errStr:    ErrRESPMODWithNoResp,
+				err:       ErrRESPMODWithoutResp,
 			},
 		}
 
 		for _, sample := range sampleTable {
-			if _, err := NewRequest(sample.reqMethod, sample.urlStr, sample.httpReq, sample.httpResp); !reflect.DeepEqual(err,
-				sample.err) {
+			if _, err := NewRequest(context.Background(), sample.reqMethod, sample.urlStr, sample.httpReq, sample.httpResp); !errors.Is(err, sample.err) {
 				t.Logf("Wanted error: %v, got: %v", sample.err, err)
 				t.Fail()
 			}
@@ -110,131 +99,9 @@ func TestRequest(t *testing.T) {
 
 	})
 
-	t.Run("DumpRequest OPTIONS", func(t *testing.T) {
-
-		req, _ := NewRequest(MethodOPTIONS, "icap://localhost:1344/something", nil, nil)
-
-		b, err := DumpRequest(req)
-
-		if err != nil {
-			t.Fatal(err.Error())
-		}
-
-		wanted := "OPTIONS icap://localhost:1344/something ICAP/1.0\r\n" +
-			"Encapsulated:  null-body=0\r\n\r\n"
-
-		got := string(b)
-
-		if wanted != got {
-			t.Logf("wanted: %s, got: %s\n", wanted, got)
-			t.Fail()
-		}
-
-	})
-
-	t.Run("DumpRequest REQMOD", func(t *testing.T) { // FIXME: add proper wanted string and complete this unit test
-		httpReq, _ := http.NewRequest(http.MethodGet, "http://someurl.com", nil)
-
-		req, _ := NewRequest(MethodREQMOD, "icap://localhost:1344/something", httpReq, nil)
-
-		b, err := DumpRequest(req)
-		if err != nil {
-			t.Fatal(err.Error())
-		}
-
-		wanted := "REQMOD icap://localhost:1344/something ICAP/1.0\r\n" +
-			"Encapsulated:  req-hdr=0, null-body=109\r\n\r\n" +
-			"GET http://someurl.com HTTP/1.1\r\n" +
-			"Host: someurl.com\r\n" +
-			"User-Agent: Go-http-client/1.1\r\n" +
-			"Accept-Encoding: gzip\r\n\r\n"
-
-		got := string(b)
-
-		if wanted != got {
-			t.Logf("wanted: \n%s\ngot: \n%s\n", wanted, got)
-			t.Fail()
-		}
-
-		httpReq, _ = http.NewRequest(http.MethodPost, "http://someurl.com", bytes.NewBufferString("Hello World"))
-
-		req, _ = NewRequest(MethodREQMOD, "icap://localhost:1344/something", httpReq, nil)
-
-		b, err = DumpRequest(req)
-		if err != nil {
-			t.Fatal(err.Error())
-		}
-
-		wanted = "REQMOD icap://localhost:1344/something ICAP/1.0\r\n" +
-			"Encapsulated:  req-hdr=0, req-body=130\r\n\r\n" +
-			"POST http://someurl.com HTTP/1.1\r\n" +
-			"Host: someurl.com\r\n" +
-			"User-Agent: Go-http-client/1.1\r\n" +
-			"Content-Length: 11\r\n" +
-			"Accept-Encoding: gzip\r\n\r\n" +
-			"b\r\n" +
-			"Hello World\r\n" +
-			"0\r\n\r\n"
-
-		got = string(b)
-
-		if wanted != got {
-			t.Logf("wanted: \n%s\ngot: \n%s\n", wanted, got)
-			t.Fail()
-		}
-
-	})
-
-	t.Run("DumpRequest RESPMOD", func(t *testing.T) {
-		httpReq, _ := http.NewRequest(http.MethodPost, "http://someurl.com", bytes.NewBufferString("Hello World"))
-		httpResp := &http.Response{
-			Status:     "200 OK",
-			StatusCode: http.StatusOK,
-			Proto:      "HTTP/1.0",
-			ProtoMajor: 1,
-			ProtoMinor: 0,
-			Header: http.Header{
-				"Content-Type":   []string{"plain/text"},
-				"Content-Length": []string{"11"},
-			},
-			ContentLength: 11,
-			Body:          ioutil.NopCloser(strings.NewReader("Hello World")),
-		}
-
-		req, _ := NewRequest(MethodRESPMOD, "icap://localhost:1344/something", httpReq, httpResp)
-
-		b, err := DumpRequest(req)
-		if err != nil {
-			t.Fatal(err.Error())
-		}
-
-		wanted := "RESPMOD icap://localhost:1344/something ICAP/1.0\r\n" +
-			"Encapsulated:  req-hdr=0, req-body=130, res-hdr=145, res-body=210\r\n\r\n" +
-			"POST http://someurl.com HTTP/1.1\r\n" +
-			"Host: someurl.com\r\n" +
-			"User-Agent: Go-http-client/1.1\r\n" +
-			"Content-Length: 11\r\n" +
-			"Accept-Encoding: gzip\r\n\r\n" +
-			"Hello World\r\n\r\n" +
-			"HTTP/1.0 200 OK\r\n" +
-			"Content-Length: 11\r\n" +
-			"Content-Type: plain/text\r\n\r\n" +
-			"b\r\n" +
-			"Hello World\r\n" +
-			"0\r\n\r\n"
-
-		got := string(b)
-
-		if wanted != got {
-			t.Logf("wanted: \n%s\ngot: \n%s\n", wanted, got)
-			t.Fail()
-		}
-
-	})
-
-	t.Run("SetDefaultRequestHeaders", func(t *testing.T) {
-		req, _ := NewRequest(MethodOPTIONS, "icap://localhost:1344/something", nil, nil)
-		req.SetDefaultRequestHeaders()
+	t.Run("setDefaultRequestHeaders", func(t *testing.T) {
+		req, _ := NewRequest(context.Background(), MethodOPTIONS, "icap://localhost:1344/something", nil, nil)
+		req.setDefaultRequestHeaders()
 
 		if val, exists := req.Header["Allow"]; !exists || len(val) < 1 || val[0] != "204" {
 			t.Log("Must have Allow header with 204 as value")
@@ -247,9 +114,9 @@ func TestRequest(t *testing.T) {
 			t.Fail()
 		}
 
-		req, _ = NewRequest(MethodOPTIONS, "icap://localhost:1344/something", nil, nil)
+		req, _ = NewRequest(context.Background(), MethodOPTIONS, "icap://localhost:1344/something", nil, nil)
 		req.Header.Set("Host", "somehost")
-		req.SetDefaultRequestHeaders()
+		req.setDefaultRequestHeaders()
 
 		if val, exists := req.Header["Host"]; !exists || len(val) < 1 || val[0] != "somehost" {
 			t.Logf("Must have Host header with %s as value", "somehost")
@@ -258,8 +125,7 @@ func TestRequest(t *testing.T) {
 
 	})
 
-	t.Run("ExtendHeader", func(t *testing.T) {
-
+	t.Run("extendHeader", func(t *testing.T) {
 		type testSample struct {
 			extendingHeader http.Header
 			nameValue       []string
@@ -294,12 +160,12 @@ func TestRequest(t *testing.T) {
 		}
 
 		for _, sample := range sampleTable {
-			req, _ := NewRequest(MethodOPTIONS, "icap://localhost:1344/something", nil, nil)
+			req, _ := NewRequest(context.Background(), MethodOPTIONS, "icap://localhost:1344/something", nil, nil)
 			if sample.defaultHeaders {
-				req.SetDefaultRequestHeaders()
+				req.setDefaultRequestHeaders()
 			}
 
-			if err := req.ExtendHeader(sample.extendingHeader); err != nil {
+			if err := req.extendHeader(sample.extendingHeader); err != nil {
 				t.Fatal(err.Error())
 			}
 
@@ -376,9 +242,9 @@ func TestRequest(t *testing.T) {
 		for _, sample := range sampleTable {
 			bodyData := bytes.NewBufferString(sample.bodyStr)
 			httpReq, _ := http.NewRequest(http.MethodPost, "http://someurl.com", bodyData)
-			var req *Request
+			var req Request
 			if sample.reqMethod == MethodREQMOD {
-				req, _ = NewRequest(sample.reqMethod, "icap://localhost:1344/something", httpReq, nil)
+				req, _ = NewRequest(context.Background(), sample.reqMethod, "icap://localhost:1344/something", httpReq, nil)
 			}
 			if sample.reqMethod == MethodRESPMOD {
 				httpResp := &http.Response{
@@ -392,9 +258,9 @@ func TestRequest(t *testing.T) {
 						"Content-Length": []string{strconv.Itoa(bodyData.Len())},
 					},
 					ContentLength: int64(bodyData.Len()),
-					Body:          ioutil.NopCloser(strings.NewReader(sample.bodyStr)),
+					Body:          io.NopCloser(strings.NewReader(sample.bodyStr)),
 				}
-				req, _ = NewRequest(sample.reqMethod, "icap://localhost:1344/something", httpReq, httpResp)
+				req, _ = NewRequest(context.Background(), sample.reqMethod, "icap://localhost:1344/something", httpReq, httpResp)
 			}
 
 			if err := req.SetPreview(sample.previewBytes); err != nil {
@@ -409,11 +275,11 @@ func TestRequest(t *testing.T) {
 			var bdyBytes []byte
 
 			if sample.reqMethod == MethodREQMOD {
-				bdyBytes, _ = ioutil.ReadAll(req.HTTPRequest.Body)
+				bdyBytes, _ = io.ReadAll(req.HTTPRequest.Body)
 			}
 
 			if sample.reqMethod == MethodRESPMOD {
-				bdyBytes, _ = ioutil.ReadAll(req.HTTPResponse.Body)
+				bdyBytes, _ = io.ReadAll(req.HTTPResponse.Body)
 			}
 
 			if string(bdyBytes) != sample.bodyStr {

@@ -1,38 +1,34 @@
 package icapclient
 
 import (
+	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
 
-func TestClient(t *testing.T) {
+func TestClient_Do(t *testing.T) {
 	if !testServerRunning() {
 		go startTestServer()
 	}
 
-	t.Run("Client Do RESPMOD", func(t *testing.T) {
+	t.Parallel()
 
+	t.Run("RESPMOD", func(t *testing.T) {
 		httpReq, err := http.NewRequest(http.MethodGet, "http://someurl.com", nil)
 		if err != nil {
-			t.Log(err.Error())
-			t.Fail()
+			t.Error(err)
 			return
 		}
 
 		type testSample struct {
-			httpResp            *http.Response
-			wantedStatusCode    int
-			wantedStatus        string
-			wantedTimeout       time.Duration
-			wantedDialerTimeout time.Duration
-			wantedReadTimeout   time.Duration
-			wantedWriteTimeout  time.Duration
+			httpResp         *http.Response
+			wantedStatusCode int
+			wantedStatus     string
 		}
 
 		sampleTable := []testSample{
@@ -48,14 +44,10 @@ func TestClient(t *testing.T) {
 						"Content-Length": []string{"19"},
 					},
 					ContentLength: 19,
-					Body:          ioutil.NopCloser(strings.NewReader("This is a GOOD FILE")),
+					Body:          io.NopCloser(strings.NewReader("This is a GOOD FILE")),
 				},
-				wantedStatusCode:    http.StatusNoContent,
-				wantedStatus:        "No Modifications",
-				wantedTimeout:       defaultTimeout,
-				wantedDialerTimeout: defaultTimeout,
-				wantedReadTimeout:   defaultTimeout,
-				wantedWriteTimeout:  defaultTimeout,
+				wantedStatusCode: http.StatusNoContent,
+				wantedStatus:     "No Modifications",
 			},
 			{
 				httpResp: &http.Response{
@@ -69,155 +61,92 @@ func TestClient(t *testing.T) {
 						"Content-Length": []string{"18"},
 					},
 					ContentLength: 18,
-					Body:          ioutil.NopCloser(strings.NewReader("This is a BAD FILE")),
+					Body:          io.NopCloser(strings.NewReader("This is a BAD FILE")),
 				},
-				wantedStatusCode:    http.StatusOK,
-				wantedStatus:        "OK",
-				wantedTimeout:       defaultTimeout,
-				wantedDialerTimeout: defaultTimeout,
-				wantedReadTimeout:   defaultTimeout,
-				wantedWriteTimeout:  defaultTimeout,
+				wantedStatusCode: http.StatusOK,
+				wantedStatus:     "OK",
 			},
 		}
 
 		for _, sample := range sampleTable {
-			req, err := NewRequest(MethodRESPMOD, fmt.Sprintf("icap://localhost:%d/respmod", port), httpReq, sample.httpResp)
+			req, err := NewRequest(context.Background(), MethodRESPMOD, fmt.Sprintf("icap://localhost:%d/respmod", port), httpReq, sample.httpResp)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
-			client := Client{}
+			client, _ := NewClient()
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if resp.StatusCode != sample.wantedStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
 			}
 
 			if resp.Status != sample.wantedStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
-				t.Fail()
-			}
-
-			if client.Timeout != sample.wantedTimeout {
-				t.Logf("Wanted timeout to be:%v, got:%v", sample.wantedTimeout, client.Timeout)
-				t.Fail()
-			}
-			if client.scktDriver.DialerTimeout != sample.wantedDialerTimeout {
-				t.Logf("Wanted DialierTimeout to be:%v , got:%v", sample.wantedDialerTimeout, client.scktDriver.DialerTimeout)
-				t.Fail()
-			}
-			if client.scktDriver.ReadTimeout != sample.wantedReadTimeout {
-				t.Logf("Wanted ReadTimeout to be:%v , got:%v", sample.wantedReadTimeout, client.scktDriver.ReadTimeout)
-				t.Fail()
-			}
-			if client.scktDriver.WriteTimeout != sample.wantedWriteTimeout {
-				t.Logf("Wanted WriteTimeout to be:%v , got:%v", sample.wantedWriteTimeout, client.scktDriver.WriteTimeout)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
 			}
 		}
 
 	})
 
-	t.Run("Client Do REQMOD", func(t *testing.T) {
-
+	t.Run("REQMOD", func(t *testing.T) {
 		type testSample struct {
-			urlStr              string
-			wantedStatusCode    int
-			wantedStatus        string
-			wantedTimeout       time.Duration
-			wantedDialerTimeout time.Duration
-			wantedReadTimeout   time.Duration
-			wantedWriteTimeout  time.Duration
+			urlStr           string
+			wantedStatusCode int
+			wantedStatus     string
 		}
 
 		sampleTable := []testSample{
 			{
-				urlStr:              "http://goodifle.com",
-				wantedStatusCode:    http.StatusNoContent,
-				wantedStatus:        "No Modifications",
-				wantedTimeout:       defaultTimeout,
-				wantedDialerTimeout: defaultTimeout,
-				wantedReadTimeout:   defaultTimeout,
-				wantedWriteTimeout:  defaultTimeout,
+				urlStr:           "http://goodifle.com",
+				wantedStatusCode: http.StatusNoContent,
+				wantedStatus:     "No Modifications",
 			},
 			{
-				urlStr:              "http://badfile.com",
-				wantedStatusCode:    http.StatusOK,
-				wantedStatus:        "OK",
-				wantedTimeout:       defaultTimeout,
-				wantedDialerTimeout: defaultTimeout,
-				wantedReadTimeout:   defaultTimeout,
-				wantedWriteTimeout:  defaultTimeout,
+				urlStr:           "http://badfile.com",
+				wantedStatusCode: http.StatusOK,
+				wantedStatus:     "OK",
 			},
 		}
 
 		for _, sample := range sampleTable {
 			httpReq, err := http.NewRequest(http.MethodGet, sample.urlStr, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
-			req, err := NewRequest(MethodREQMOD, fmt.Sprintf("icap://localhost:%d/reqmod", port), httpReq, nil)
+			req, err := NewRequest(context.Background(), MethodREQMOD, fmt.Sprintf("icap://localhost:%d/reqmod", port), httpReq, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
-			client := Client{}
+			client, _ := NewClient()
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if resp.StatusCode != sample.wantedStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
 			}
 
 			if resp.Status != sample.wantedStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
 			}
-
-			if client.Timeout != sample.wantedTimeout {
-				t.Logf("Wanted timeout to be:%v, got:%v", sample.wantedTimeout, client.Timeout)
-				t.Fail()
-			}
-			if client.scktDriver.DialerTimeout != sample.wantedDialerTimeout {
-				t.Logf("Wanted DialierTimeout to be:%v , got:%v", sample.wantedDialerTimeout, client.scktDriver.DialerTimeout)
-				t.Fail()
-			}
-			if client.scktDriver.ReadTimeout != sample.wantedReadTimeout {
-				t.Logf("Wanted ReadTimeout to be:%v , got:%v", sample.wantedReadTimeout, client.scktDriver.ReadTimeout)
-				t.Fail()
-			}
-			if client.scktDriver.WriteTimeout != sample.wantedWriteTimeout {
-				t.Logf("Wanted WriteTimeout to be:%v , got:%v", sample.wantedWriteTimeout, client.scktDriver.WriteTimeout)
-				t.Fail()
-			}
-
 		}
 	})
 
-	t.Run("Clien Do RESPMOD with OPTIONS", func(t *testing.T) {
-
+	t.Run("RESPMOD with OPTIONS", func(t *testing.T) {
 		httpReq, err := http.NewRequest(http.MethodGet, "http://someurl.com", nil)
 		if err != nil {
-			t.Log(err.Error())
-			t.Fail()
+			t.Error(err)
 			return
 		}
 
@@ -244,7 +173,7 @@ func TestClient(t *testing.T) {
 						"Content-Length": []string{"41"},
 					},
 					ContentLength: 41,
-					Body:          ioutil.NopCloser(strings.NewReader("Hello World!This is a GOOD FILE! bye bye!")),
+					Body:          io.NopCloser(strings.NewReader("Hello World!This is a GOOD FILE! bye bye!")),
 				},
 				wantedStatusCode:       http.StatusNoContent,
 				wantedStatus:           "No Modifications",
@@ -270,7 +199,7 @@ func TestClient(t *testing.T) {
 						"Content-Length": []string{"18"},
 					},
 					ContentLength: 18,
-					Body:          ioutil.NopCloser(strings.NewReader("This is a BAD FILE")),
+					Body:          io.NopCloser(strings.NewReader("This is a BAD FILE")),
 				},
 				wantedStatusCode:       http.StatusOK,
 				wantedStatus:           "OK",
@@ -287,87 +216,73 @@ func TestClient(t *testing.T) {
 		}
 
 		for _, sample := range sampleTable {
-
 			urlStr := fmt.Sprintf("icap://localhost:%d/respmod", port)
 
-			optReq, err := NewRequest(MethodOPTIONS, urlStr, nil, nil)
+			optReq, err := NewRequest(context.Background(), MethodOPTIONS, urlStr, nil, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
-			client := Client{}
+			client, _ := NewClient()
 			optResp, err := client.Do(optReq)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if optResp.Status != sample.wantedOptionStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedOptionStatus, optResp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedOptionStatus, optResp.Status)
 			}
 
 			if optResp.StatusCode != sample.wantedOptionStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedOptionStatusCode, optResp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedOptionStatusCode, optResp.StatusCode)
 			}
 
 			if optResp.PreviewBytes != sample.wantedPreviewBytes {
-				t.Logf("Wanted preview bytes:%d , got:%d", sample.wantedPreviewBytes, optResp.PreviewBytes)
-				t.Fail()
+				t.Errorf("Wanted preview bytes:%d , got:%d", sample.wantedPreviewBytes, optResp.PreviewBytes)
 			}
 
 			for k, v := range sample.wantedOptionHeader {
 				if val, exists := optResp.Header[k]; exists {
 					if !reflect.DeepEqual(val, v) {
-						t.Logf("Wanted value for header:%s to be:%v, got:%v", k, v, val)
-						t.Fail()
+						t.Errorf("Wanted value for header:%s to be:%v, got:%v", k, v, val)
 					}
 					continue
 				}
 
-				t.Logf("Expected header:%s but not found", k)
-				t.Fail()
-
+				t.Errorf("Expected header:%s but not found", k)
 			}
 
-			req, err := NewRequest(MethodRESPMOD, urlStr, httpReq, sample.httpResp)
+			req, err := NewRequest(context.Background(), MethodRESPMOD, urlStr, httpReq, sample.httpResp)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
-			if err := req.ExtendHeader(optResp.Header); err != nil {
-				t.Log(err.Error())
-				t.Fail()
+			if err := req.extendHeader(optResp.Header); err != nil {
+				t.Error(err)
 				return
 			}
 
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if resp.StatusCode != sample.wantedStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
 			}
 
 			if resp.Status != sample.wantedStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
 			}
 
 		}
 	})
 
-	t.Run("Client Do REQMOD with OPTIONS", func(t *testing.T) {
+	t.Run("REQMOD with OPTIONS", func(t *testing.T) {
 		type testSample struct {
 			urlStr                 string
 			wantedStatusCode       int
@@ -408,79 +323,67 @@ func TestClient(t *testing.T) {
 
 		for _, sample := range sampleTable {
 
-			client := Client{}
 			urlStr := fmt.Sprintf("icap://localhost:%d/reqmod", port)
 
-			optReq, err := NewRequest(MethodOPTIONS, urlStr, nil, nil)
+			optReq, err := NewRequest(context.Background(), MethodOPTIONS, urlStr, nil, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
+			client, _ := NewClient()
 			optResp, err := client.Do(optReq)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if optResp.Status != sample.wantedOptionStatus {
-				t.Logf("Wanted status:%s , got:%s", sample.wantedOptionStatus, optResp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s , got:%s", sample.wantedOptionStatus, optResp.Status)
 			}
 			if optResp.StatusCode != sample.wantedOptionStatusCode {
-				t.Logf("Wanted status code:%d , got:%d", sample.wantedOptionStatusCode, optResp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d , got:%d", sample.wantedOptionStatusCode, optResp.StatusCode)
 			}
 			for k, v := range sample.wantedOptionHeader {
 				if val, exists := optResp.Header[k]; exists {
 					if !reflect.DeepEqual(val, v) {
-						t.Logf("Wanted header:%s to have value:%v, got:%v", k, v, val)
-						t.Fail()
+						t.Errorf("Wanted header:%s to have value:%v, got:%v", k, v, val)
 					}
 					continue
 				}
 
-				t.Logf("Expected header:%s but not found", k)
-				t.Fail()
+				t.Errorf("Expected header:%s but not found", k)
 			}
 
 			httpReq, err := http.NewRequest(http.MethodGet, sample.urlStr, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
-			req, err := NewRequest(MethodREQMOD, urlStr, httpReq, nil)
+			req, err := NewRequest(context.Background(), MethodREQMOD, urlStr, httpReq, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
-			if err := req.ExtendHeader(optResp.Header); err != nil {
-				t.Log(err.Error())
-				t.Fail()
+			if err := req.extendHeader(optResp.Header); err != nil {
+				t.Error(err)
 				return
 			}
 
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if resp.StatusCode != sample.wantedStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
 			}
 
 			if resp.Status != sample.wantedStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
 			}
 
 		}
@@ -489,91 +392,50 @@ func TestClient(t *testing.T) {
 	t.Run("Client Do REQMOD with Custom Driver", func(t *testing.T) {
 
 		type testSample struct {
-			urlStr              string
-			wantedStatusCode    int
-			wantedStatus        string
-			wantedTimeout       time.Duration
-			wantedDialerTimeout time.Duration
-			wantedReadTimeout   time.Duration
-			wantedWriteTimeout  time.Duration
+			urlStr           string
+			wantedStatusCode int
+			wantedStatus     string
 		}
 
 		sampleTable := []testSample{
 			{
-				urlStr:              "http://goodifle.com",
-				wantedStatusCode:    http.StatusNoContent,
-				wantedStatus:        "No Modifications",
-				wantedTimeout:       defaultTimeout,
-				wantedDialerTimeout: 2 * time.Second,
-				wantedReadTimeout:   2 * time.Second,
-				wantedWriteTimeout:  2 * time.Second,
+				urlStr:           "http://goodifle.com",
+				wantedStatusCode: http.StatusNoContent,
+				wantedStatus:     "No Modifications",
 			},
 			{
-				urlStr:              "http://badfile.com",
-				wantedStatusCode:    http.StatusOK,
-				wantedStatus:        "OK",
-				wantedTimeout:       defaultTimeout,
-				wantedDialerTimeout: 2 * time.Second,
-				wantedReadTimeout:   2 * time.Second,
-				wantedWriteTimeout:  2 * time.Second,
+				urlStr:           "http://badfile.com",
+				wantedStatusCode: http.StatusOK,
+				wantedStatus:     "OK",
 			},
 		}
 
 		for _, sample := range sampleTable {
 			httpReq, err := http.NewRequest(http.MethodGet, sample.urlStr, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
-			req, err := NewRequest(MethodREQMOD, fmt.Sprintf("icap://localhost:%d/reqmod", port), httpReq, nil)
+			req, err := NewRequest(context.Background(), MethodREQMOD, fmt.Sprintf("icap://localhost:%d/reqmod", port), httpReq, nil)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
-			client := Client{}
-			client.SetDriver(&Driver{
-				Host:          "127.0.0.1",
-				Port:          1344,
-				DialerTimeout: 2 * time.Second,
-				ReadTimeout:   2 * time.Second,
-				WriteTimeout:  2 * time.Second,
-			})
+			client, _ := NewClient()
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Log(err.Error())
-				t.Fail()
+				t.Error(err)
 				return
 			}
 
 			if resp.StatusCode != sample.wantedStatusCode {
-				t.Logf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
-				t.Fail()
+				t.Errorf("Wanted status code:%d, got:%d", sample.wantedStatusCode, resp.StatusCode)
 			}
 
 			if resp.Status != sample.wantedStatus {
-				t.Logf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
-				t.Fail()
-			}
-
-			if client.Timeout != sample.wantedTimeout {
-				t.Logf("Wanted timeout to be:%v, got:%v", sample.wantedTimeout, client.Timeout)
-				t.Fail()
-			}
-			if client.scktDriver.DialerTimeout != sample.wantedDialerTimeout {
-				t.Logf("Wanted DialierTimeout to be:%v , got:%v", sample.wantedDialerTimeout, client.scktDriver.DialerTimeout)
-				t.Fail()
-			}
-			if client.scktDriver.ReadTimeout != sample.wantedReadTimeout {
-				t.Logf("Wanted ReadTimeout to be:%v , got:%v", sample.wantedReadTimeout, client.scktDriver.ReadTimeout)
-				t.Fail()
-			}
-			if client.scktDriver.WriteTimeout != sample.wantedWriteTimeout {
-				t.Logf("Wanted WriteTimeout to be:%v , got:%v", sample.wantedWriteTimeout, client.scktDriver.WriteTimeout)
-				t.Fail()
+				t.Errorf("Wanted status:%s, got:%s", sample.wantedStatus, resp.Status)
 			}
 
 		}

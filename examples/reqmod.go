@@ -1,6 +1,7 @@
 package examples
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,51 +11,51 @@ import (
 )
 
 func makeReqmodCall() {
+	ctx := context.Background()
 
-	/* preparing the http request required for the REQMOD */
+	// prepare the http request
 	httpReq, err := http.NewRequest(http.MethodGet, "http://localhost:8000/sample.pdf", nil)
-
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	/* making a icap request with OPTIONS method */
-	optReq, err := ic.NewRequest(ic.MethodOPTIONS, "icap://127.0.0.1:1344/reqmod", nil, nil)
-
+	// create a new icap OPTIONS request
+	optReq, err := ic.NewRequest(ctx, ic.MethodOPTIONS, "icap://127.0.0.1:1344/reqmod", nil, nil)
 	if err != nil {
 		log.Fatal(err)
-		return
 	}
 
-	/* making the icap client responsible for making the requests */
-	client := &ic.Client{
-		Timeout: 5 * time.Second,
+	// create the icap client
+	client, err := ic.NewClient(
+		ic.WithICAPConnectionTimeout(5 * time.Second),
+	)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	/* making the OPTIONS request call */
+	// send the OPTIONS request
 	optResp, err := client.Do(optReq)
-
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-
-	/* making a icap request with REQMOD method */
-	req, err := ic.NewRequest(ic.MethodREQMOD, "icap://127.0.0.1:1344/reqmod", httpReq, nil)
-
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	req.SetPreview(optResp.PreviewBytes) // setting the preview bytes obtained from the OPTIONS call
+	// create a new icap REQMOD request
+	req, err := ic.NewRequest(ctx, ic.MethodREQMOD, "icap://127.0.0.1:1344/reqmod", httpReq, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	/* making the REQMOD request call */
+	// set the preview bytes obtained from the OPTIONS call
+	err = req.SetPreview(optResp.PreviewBytes)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// send the REQMOD request
 	resp, err := client.Do(req)
-
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	fmt.Println(resp.Status)
-
 }
